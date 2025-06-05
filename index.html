@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sol Maior</title>
+  <link rel="icon" href="https://emojicdn.elk.sh/☀️" />
+  <style>
+    :root {
+      --primary: #fffbe7;
+      --accent: #f9d923;
+      --text: #22223b;
+      --button: #f9d923;
+      --button-hover: #ffe066;
+      --border: #e9ecef;
+    }
+    body {
+      background: var(--primary);
+      color: var(--text);
+      font-family: 'Inter', Arial, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    header {
+      margin-top: 3rem;
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      margin: 0 0 0.5rem 0;
+    }
+    p {
+      font-size: 1.1rem;
+      color: #6c757d;
+      margin: 0 0 2rem 0;
+    }
+    .recorder {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    button {
+      background: var(--button);
+      color: var(--text);
+      border: none;
+      border-radius: 2rem;
+      padding: 0.8rem 2rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      box-shadow: 0 2px 8px #0001;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    button:hover:not(:disabled) {
+      background: var(--button-hover);
+    }
+    .notes {
+      margin-top: 2rem;
+      min-height: 2.5rem;
+      font-size: 1.3rem;
+      letter-spacing: 0.1em;
+      text-align: center;
+      background: #fffde4;
+      border-radius: 1rem;
+      padding: 1rem 2rem;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 4px #0001;
+      display: inline-block;
+    }
+    @media (max-width: 600px) {
+      h1 { font-size: 2rem; }
+      .recorder { flex-direction: column; gap: 0.5rem; }
+      .notes { font-size: 1rem; padding: 0.7rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>☀️ Sol Maior</h1>
+    <p>Grave seu assobio ou canto e descubra as notas musicais!</p>
+  </header>
+  <div class="recorder">
+    <button id="recordBtn">Gravar</button>
+    <button id="stopBtn" disabled>Parar</button>
+    <button id="sendBtn" disabled>Enviar</button>
+  </div>
+  <div class="notes" id="notes">Notas detectadas aparecerão aqui.</div>
+
+  <script src="config.js"></script>
+  <script>
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioBlob = null;
+
+    const recordBtn = document.getElementById('recordBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const sendBtn = document.getElementById('sendBtn');
+    const notesDiv = document.getElementById('notes');
+
+    recordBtn.onclick = async () => {
+      audioChunks = [];
+      notesDiv.textContent = 'Gravando...';
+      recordBtn.disabled = true;
+      stopBtn.disabled = false;
+      sendBtn.disabled = true;
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+
+      mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+        stopBtn.disabled = true;
+        sendBtn.disabled = false;
+        recordBtn.disabled = false;
+        notesDiv.textContent = 'Áudio pronto para envio!';
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+    };
+
+    stopBtn.onclick = () => {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        stopBtn.disabled = true;
+      }
+    };
+
+    sendBtn.onclick = async () => {
+      if (!audioBlob) return;
+      notesDiv.textContent = 'Processando...';
+      sendBtn.disabled = true;
+      recordBtn.disabled = true;
+
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'audio.wav');
+
+      try {
+        const res = await fetch(window.BACKEND_URL + '/extract_notes/', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (data.notes && data.notes.length > 0) {
+          notesDiv.textContent = 'Notas: ' + data.notes.join(' - ');
+        } else if (data.error) {
+          notesDiv.textContent = 'Erro: ' + data.error;
+        } else {
+          notesDiv.textContent = 'Nenhuma nota detectada.';
+        }
+      } catch (err) {
+        notesDiv.textContent = 'Erro ao conectar ao backend.';
+      } finally {
+        recordBtn.disabled = false;
+        sendBtn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>
